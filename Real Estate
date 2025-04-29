@@ -1,0 +1,128 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
+
+# Données de l'investissement
+prix_bien = 220000
+frais_notaire = 16866
+travaux = 56400
+total_projet = 293266
+apport = 10000
+emprunt = total_projet - apport
+
+# Paramètres du prêt
+taux_interet = 0.033
+duree_emprunt = 25
+annuite = 16596
+
+# Autres paramètres
+depenses_annuelles = 2570
+loyers_annuels = 20640
+tmi = 0.30
+csg_crds = 0.172
+duree_amortissement = 15  # années
+
+# Préparation des données sur 30 ans
+annees = np.arange(1, 31)
+annuites = [annuite if annee <= duree_emprunt else 0 for annee in annees]
+
+# Calcul des intérêts pour la déduction fiscale
+interets_annuels = []
+capital_restant = emprunt
+for annee in range(duree_emprunt):
+    interets = capital_restant * taux_interet
+    capital = annuite - interets
+    interets_annuels.append(interets)
+    capital_restant -= capital
+interets_annuels.extend([0] * (30 - duree_emprunt))
+
+# Calcul des amortissements fiscaux
+amortissement_annuel = (prix_bien + frais_notaire) / duree_amortissement
+amortissements = [amortissement_annuel] * min(30, duree_amortissement)
+amortissements.extend([0] * (30 - len(amortissements)))
+
+# Calcul des résultats fiscaux avec report déficit
+resultats_fiscaux = []
+deficit_report = 0
+impots = []
+prelevements_sociaux = []
+cashflows_nets = []
+
+for annee in range(30):
+    # Calcul du résultat fiscal (loyers - charges - intérêts - amortissement)
+    charges_fiscales = depenses_annuelles + interets_annuels[annee] + amortissements[annee]
+    resultat_fiscal = loyers_annuels - charges_fiscales
+    
+    # Application du report de déficit
+    if resultat_fiscal < 0:
+        deficit_report += -resultat_fiscal
+        resultat_imposable = 0
+    else:
+        if deficit_report > 0:
+            if resultat_fiscal >= deficit_report:
+                resultat_imposable = resultat_fiscal - deficit_report
+                deficit_report = 0
+            else:
+                resultat_imposable = 0
+                deficit_report -= resultat_fiscal
+        else:
+            resultat_imposable = resultat_fiscal
+    
+    # Calcul des prélèvements
+    impot = resultat_imposable * tmi
+    prelevement_social = resultat_imposable * csg_crds
+    
+    # Calcul du cashflow net
+    cashflow_net = loyers_annuels - depenses_annuelles - annuites[annee] - impot - prelevement_social
+    
+    resultats_fiscaux.append(resultat_fiscal)
+    impots.append(impot)
+    prelevements_sociaux.append(prelevement_social)
+    cashflows_nets.append(cashflow_net)
+
+# Création du graphique
+fig, ax = plt.subplots(figsize=(14, 8))
+
+# Barres pour les dépenses (négatives)
+ax.bar(annees, [-x for x in depenses_annuelles * np.ones(30)], label='Dépenses Annuelles', color='#ff7f0e')
+ax.bar(annees, [-x for x in annuites], bottom=[-x for x in depenses_annuelles * np.ones(30)], 
+       label='Annuité de crédit', color='#d62728')
+ax.bar(annees, [-x for x in np.array(impots) + np.array(prelevements_sociaux)], 
+       bottom=[-x - y for x, y in zip(depenses_annuelles * np.ones(30), annuites)], 
+       label='Fiscalité (IR + PS)', color='#2ca02c')
+
+# Barres pour les revenus (positifs)
+ax.bar(annees, loyers_annuels * np.ones(30), label='Loyers', color='#1f77b4')
+
+# Ligne pour le cashflow net
+line, = ax.plot(annees, cashflows_nets, label='Cashflow Net', color='black', linewidth=2.5, marker='o')
+
+# Affichage des valeurs tous les 2 ans
+for i in range(0, 30, 2):
+    ax.text(annees[i], cashflows_nets[i] + 500, f"{int(cashflows_nets[i]):,}€".replace(",", " "),
+            ha='center', va='bottom', fontsize=9, bbox=dict(facecolor='white', alpha=0.8, edgecolor='none'))
+
+# Ligne à zéro
+ax.axhline(0, color='black', linewidth=0.5)
+
+# Personnalisation
+ax.set_title("Simulation : LMNP BIC-Réel over 30 years\n", 
+             fontsize=16, pad=20)
+ax.set_xlabel('Années', fontsize=12)
+ax.set_ylabel('Montant (€)', fontsize=12)
+ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+ax.grid(axis='y', linestyle='--', alpha=0.7)
+
+# Formatage de l'axe Y en euros
+def euro_format(x, pos):
+    return f"{int(x):,} €".replace(",", " ")
+
+ax.yaxis.set_major_formatter(FuncFormatter(euro_format))
+
+# Ajustement des limites avec marge supplémentaire pour les annotations
+ymin = min(cashflows_nets) * 1.1
+ymax = max(loyers_annuels * 1.1)
+ax.set_ylim(ymin - 1000, ymax + 2000)  # Marge supplémentaire en haut
+
+plt.tight_layout()
+plt.show()
