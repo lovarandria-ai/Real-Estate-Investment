@@ -126,3 +126,133 @@ ax.set_ylim(ymin - 1000, ymax + 2000)  # Marge supplémentaire en haut
 
 plt.tight_layout()
 plt.show()
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib.ticker import FuncFormatter
+
+# 1. NOUVELLE TABLE D'ABATTEMENT
+abattements = {
+    'duree': [0, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+    'taux_effectif': [0.362, 0.348, 0.334, 0.319, 0.305, 0.291, 0.277, 0.262, 0.248, 0.234, 0.220, 0.205, 0.191, 0.177, 0.163, 0.148, 0.134, 0.124, 0.108, 0.093, 0.077, 0.062, 0.046, 0.031, 0.015, 0.000]
+}
+df_abattements = pd.DataFrame(abattements)
+
+# 2. TABLEAU D'AMORTISSEMENT (25 ans)
+def generer_amortissement(nominal, taux_annuel, duree_annees):
+    taux_mensuel = taux_annuel / 12
+    nb_mensualites = duree_annees * 12
+    mensualite = nominal * taux_mensuel / (1 - (1 + taux_mensuel)**-nb_mensualites)
+    
+    capital_restant = nominal
+    tableau = []
+    
+    for mois in range(1, nb_mensualites + 1):
+        interets = capital_restant * taux_mensuel
+        capital_rembourse = mensualite - interets
+        capital_restant -= capital_rembourse
+        
+        tableau.append({
+            'Année': (mois - 1) // 12 + 1,
+            'Capital restant': max(0, capital_restant)
+        })
+    
+    return pd.DataFrame(tableau).groupby('Année').last().reset_index()
+
+capital_emprunte = 283266
+taux = 0.033
+duree = 25
+amortissement = generer_amortissement(capital_emprunte, taux, duree)
+
+# 3. CALCUL PLUS-VALUE AVEC GESTION DES ANNÉES > 25 ANS
+def calculer_plus_value(annee_vente, prix_vente=355000):
+    # Données immobilières
+    prix_achat = 220000
+    frais_notaire = 16866
+    travaux = 56400
+    prix_acquisition = prix_achat + frais_notaire + travaux
+    
+    # Récupération taux effectif
+    taux_imposition = df_abattements.loc[df_abattements['duree'] <= annee_vente, 'taux_effectif'].iloc[-1]
+    
+    # Calcul plus-value
+    plus_value_brute = prix_vente - prix_acquisition
+    plus_value_nette = plus_value_brute  # Abattement déjà intégré dans le taux
+    
+    taxe = plus_value_nette * taux_imposition
+    
+    # Gestion du capital restant (0 après 25 ans)
+    if annee_vente <= 25:
+        capital_restant = amortissement.loc[amortissement['Année'] == annee_vente, 'Capital restant'].values[0]
+    else:
+        capital_restant = 0
+    
+    return {
+        'Année': annee_vente,
+        'Taux imposition': f"{taux_imposition*100:.1f}%",
+        'Plus-value brute': plus_value_brute,
+        'Taxe': taxe,
+        'Capital restant': capital_restant,
+        'Net bancaire': prix_vente - taxe - capital_restant
+    }
+
+# 4. CALCUL ET VISUALISATION (5 à 20 ans)
+resultats = []
+for annee in range(5, 21):  # Année de vente jusqu'à l'année 20
+    res = calculer_plus_value(annee)
+    resultats.append(res)
+
+df_resultats = pd.DataFrame(resultats)
+
+# Graphique
+plt.figure(figsize=(16, 8))
+bars = plt.bar(df_resultats['Année'], df_resultats['Net bancaire'], color='#1f77b4')
+
+# Ajout des valeurs
+for bar in bars:
+    height = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, height,
+             f'{height:,.0f}€',
+             ha='center', va='bottom', fontsize=9)
+
+plt.title("Net Profit by year after selling (Price Selling: 355k€)\n", fontsize=16, pad=20)
+plt.xlabel("Year of Selling", fontsize=12)
+plt.ylabel("Net Profit (€)", fontsize=12)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.xticks(range(5, 21))  # Changer la plage des années pour inclure jusqu'à l'année 19
+plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda x, _: f"{int(x):,}€".replace(",", " ")))
+
+plt.tight_layout()
+plt.show()
+
+# Affichage du tableau récapitulatif
+print("\nTABLEAU RÉCAPITULATIF (Extrait)")
+print(df_resultats[['Année', 'Taux imposition', 'Capital restant', 'Net bancaire']].to_string(index=False))
+
+# ==========================
+# RÉCAPITULATIF FINAL
+# ==========================
+# Données pour le récapitulatif final
+prix_vente = 355000
+prix_achat = 220000
+frais_notaire = 16866
+travaux = 56400
+prix_acquisition = prix_achat + frais_notaire + travaux
+
+# Année de vente fixée à 20
+annee_vente_finale = 20
+
+# Récupération des valeurs finales
+resultat_final = calculer_plus_value(annee_vente_finale)
+
+# Affichage du récapitulatif final
+print("\nRÉCAPITULATIF FINAL")
+print(f"Prix d'acquisition Total : {prix_acquisition:,.0f}€")
+print(f"Prix de Vente : {prix_vente:,.0f}€")
+print(f"Année de vente : {annee_vente_finale}")
+print(f"Plus-Value Brute : {resultat_final['Plus-value brute']:,.0f}€")
+print(f"Taux Effectif d'Imposition : {resultat_final['Taux imposition']}")
+print(f"Plus-value nette : {resultat_final['Plus-value brute'] - resultat_final['Taxe']:,.0f}€")
+print(f"Capital Restant dû (au profit de la banque) : {resultat_final['Capital restant']:,.0f}€")
+print(f"Net Bancaire Final : {resultat_final['Net bancaire']:,.0f}€")
